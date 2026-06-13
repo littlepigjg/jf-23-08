@@ -1,7 +1,8 @@
-import type { PriceMarketState, PlanetSD } from '../utils/priceEngine';
+import type { PriceMarketState, PlanetSD, MarketCrisis } from '../utils/priceEngine';
 import {
   createInitialMarketState,
   tickMarketState,
+  tickMarketStateWithEvents,
   regeneratePlanetPricesFromMarket,
   regeneratePartialPrices,
   getTicksForOffline,
@@ -12,6 +13,8 @@ import { GOODS } from '../data/goods';
 export interface TravelTickResult {
   market: PriceMarketState;
   planetPrices: Record<string, Record<string, number>>;
+  newCrises: MarketCrisis[];
+  endedCrises: MarketCrisis[];
 }
 
 export interface TradeImpactResult {
@@ -37,6 +40,8 @@ export class MarketService {
     market: PriceMarketState;
     prices: Record<string, Record<string, number>>;
     ticksApplied: number;
+    newCrises: MarketCrisis[];
+    endedCrises: MarketCrisis[];
   } {
     let market = savedMarket ?? createInitialMarketState(now);
 
@@ -46,15 +51,20 @@ export class MarketService {
 
     const ticks = getTicksForOffline(market.lastTickAt, now);
     let ticksApplied = 0;
+    let newCrises: MarketCrisis[] = [];
+    let endedCrises: MarketCrisis[] = [];
     if (ticks > 0) {
-      market = tickMarketState(market, ticks, now);
+      const result = tickMarketStateWithEvents(market, ticks, now);
+      market = result.state;
+      newCrises = result.newCrises;
+      endedCrises = result.endedCrises;
       ticksApplied = ticks;
     } else {
       market = { ...market, lastTickAt: now };
     }
 
     const prices = regeneratePlanetPricesFromMarket(market);
-    return { market, prices, ticksApplied };
+    return { market, prices, ticksApplied, newCrises, endedCrises };
   }
 
   static advanceOnTravel(
@@ -65,9 +75,14 @@ export class MarketService {
     now: number = Date.now()
   ): TravelTickResult {
     const ticks = Math.max(2, Math.round(distanceFactor * 15));
-    const nextMarket = tickMarketState(market, ticks, now);
-    const prices = regeneratePartialPrices(existingPrices, [toPlanetId], nextMarket);
-    return { market: nextMarket, planetPrices: prices };
+    const result = tickMarketStateWithEvents(market, ticks, now);
+    const prices = regeneratePartialPrices(existingPrices, [toPlanetId], result.state);
+    return {
+      market: result.state,
+      planetPrices: prices,
+      newCrises: result.newCrises,
+      endedCrises: result.endedCrises,
+    };
   }
 
   static applyTradeImpact(
@@ -115,9 +130,14 @@ export class MarketService {
     existingPrices: Record<string, Record<string, number>>,
     now: number = Date.now()
   ): TravelTickResult {
-    const nextMarket = tickMarketState(market, 1, now);
-    const prices = regeneratePlanetPricesFromMarket(nextMarket);
-    return { market: nextMarket, planetPrices: prices };
+    const result = tickMarketStateWithEvents(market, 1, now);
+    const prices = regeneratePlanetPricesFromMarket(result.state);
+    return {
+      market: result.state,
+      planetPrices: prices,
+      newCrises: result.newCrises,
+      endedCrises: result.endedCrises,
+    };
   }
 
   static getGoodTrendInfo(goodId: string, market: PriceMarketState): {

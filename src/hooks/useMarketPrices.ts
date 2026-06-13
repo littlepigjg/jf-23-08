@@ -1,20 +1,28 @@
 import { useCallback } from 'react';
-import type { PriceMarketState } from '../utils/priceEngine';
+import type { MarketCrisis, PriceMarketState } from '../utils/priceEngine';
 import {
   createInitialMarketState,
   tickMarketState,
+  tickMarketStateWithEvents,
   regeneratePlanetPricesFromMarket,
   regeneratePartialPrices,
   getTicksForOffline,
   computePrice,
 } from '../utils/priceEngine';
-import { PLANETS } from '../data/planets';
 import type { GameState } from '../types/game';
+
+export interface TickWithEventsResult {
+  state: PriceMarketState;
+  newCrises: MarketCrisis[];
+  endedCrises: MarketCrisis[];
+}
 
 export interface UseMarketPricesResult {
   createMarket: (now?: number) => PriceMarketState;
   simulateOffline: (market: PriceMarketState, now?: number) => PriceMarketState;
+  simulateOfflineWithEvents: (market: PriceMarketState, now?: number) => TickWithEventsResult;
   tick: (market: PriceMarketState, ticks: number, now?: number) => PriceMarketState;
+  tickWithEvents: (market: PriceMarketState, ticks: number, now?: number) => TickWithEventsResult;
   pricesFromMarket: (market: PriceMarketState) => Record<string, Record<string, number>>;
   partialPrices: (
     existing: Record<string, Record<string, number>>,
@@ -22,7 +30,7 @@ export interface UseMarketPricesResult {
     market: PriceMarketState
   ) => Record<string, Record<string, number>>;
   singlePrice: (goodId: string, planetId: string, market: PriceMarketState) => number;
-  enrichFromSave: (state: GameState) => { marketState: PriceMarketState; planetPrices: Record<string, Record<string, number>> };
+  enrichFromSave: (state: GameState) => { marketState: PriceMarketState; planetPrices: Record<string, Record<string, number>>; newCrises: MarketCrisis[]; endedCrises: MarketCrisis[] };
 }
 
 export function useMarketPrices(): UseMarketPricesResult {
@@ -37,9 +45,24 @@ export function useMarketPrices(): UseMarketPricesResult {
     []
   );
 
+  const simulateOfflineWithEvents = useCallback(
+    (market: PriceMarketState, now: number = Date.now()): TickWithEventsResult => {
+      const ticks = getTicksForOffline(market.lastTickAt, now);
+      if (ticks <= 0) return { state: { ...market, lastTickAt: now }, newCrises: [], endedCrises: [] };
+      return tickMarketStateWithEvents(market, ticks, now);
+    },
+    []
+  );
+
   const tick = useCallback(
     (market: PriceMarketState, ticks: number, now: number = Date.now()) =>
       tickMarketState(market, ticks, now),
+    []
+  );
+
+  const tickWithEvents = useCallback(
+    (market: PriceMarketState, ticks: number, now: number = Date.now()) =>
+      tickMarketStateWithEvents(market, ticks, now),
     []
   );
 
@@ -67,10 +90,17 @@ export function useMarketPrices(): UseMarketPricesResult {
     (state: GameState) => {
       const now = Date.now();
       let market = state.marketState ?? createInitialMarketState(now);
+      let newCrises: MarketCrisis[] = [];
+      let endedCrises: MarketCrisis[] = [];
 
       if (market.lastTickAt > 0) {
         const ticks = getTicksForOffline(market.lastTickAt, now);
-        if (ticks > 0) market = tickMarketState(market, ticks, now);
+        if (ticks > 0) {
+          const result = tickMarketStateWithEvents(market, ticks, now);
+          market = result.state;
+          newCrises = result.newCrises;
+          endedCrises = result.endedCrises;
+        }
       } else {
         market = createInitialMarketState(now);
       }
@@ -78,6 +108,8 @@ export function useMarketPrices(): UseMarketPricesResult {
       return {
         marketState: market,
         planetPrices: regeneratePlanetPricesFromMarket(market),
+        newCrises,
+        endedCrises,
       };
     },
     []
@@ -86,7 +118,9 @@ export function useMarketPrices(): UseMarketPricesResult {
   return {
     createMarket,
     simulateOffline,
+    simulateOfflineWithEvents,
     tick,
+    tickWithEvents,
     pricesFromMarket,
     partialPrices,
     singlePrice,

@@ -1,4 +1,13 @@
-import type { PriceMarketState } from '../utils/priceEngine';
+import type { PriceMarketState, MarketCrisis } from '../utils/priceEngine';
+
+export type CrisisEventType = 'start' | 'end';
+
+export interface CrisisEvent {
+  id: string;
+  type: CrisisEventType;
+  crisis: MarketCrisis;
+  timestamp: number;
+}
 
 export type PlanetType = 'resource' | 'industrial' | 'trade' | 'home';
 

@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import type { PriceMarketState } from '../utils/priceEngine';
+import type { MarketCrisis, PriceMarketState } from '../utils/priceEngine';
 import { MarketService } from '../services/marketService';
 import type { GameState } from '../types/game';
 
@@ -15,6 +15,8 @@ export interface UseMarketServiceResult {
     market: PriceMarketState;
     prices: Record<string, Record<string, number>>;
     ticksApplied: number;
+    newCrises: MarketCrisis[];
+    endedCrises: MarketCrisis[];
   };
   advanceOnTravel: (
     market: PriceMarketState,
@@ -22,7 +24,12 @@ export interface UseMarketServiceResult {
     toPlanetId: string,
     distanceFactor: number,
     now?: number
-  ) => { market: PriceMarketState; planetPrices: Record<string, Record<string, number>> };
+  ) => {
+    market: PriceMarketState;
+    planetPrices: Record<string, Record<string, number>>;
+    newCrises: MarketCrisis[];
+    endedCrises: MarketCrisis[];
+  };
   applyTradeImpact: (
     market: PriceMarketState,
     existingPrices: Record<string, Record<string, number>>,
@@ -40,7 +47,12 @@ export interface UseMarketServiceResult {
     market: PriceMarketState,
     existingPrices: Record<string, Record<string, number>>,
     now?: number
-  ) => { market: PriceMarketState; planetPrices: Record<string, Record<string, number>> };
+  ) => {
+    market: PriceMarketState;
+    planetPrices: Record<string, Record<string, number>>;
+    newCrises: MarketCrisis[];
+    endedCrises: MarketCrisis[];
+  };
   getGoodTrendInfo: (
     goodId: string,
     market: PriceMarketState
@@ -53,6 +65,8 @@ export interface UseMarketServiceResult {
   enrichFromSave: (state: GameState) => {
     marketState: PriceMarketState;
     planetPrices: Record<string, Record<string, number>>;
+    newCrises: MarketCrisis[];
+    endedCrises: MarketCrisis[];
   };
   describeOfflineTicks: (ticks: number) => string;
 }
@@ -115,8 +129,9 @@ export function useMarketService(): UseMarketServiceResult {
   );
 
   const enrichFromSave = useCallback((state: GameState) => {
-    const { market, prices } = MarketService.loadWithOfflineCatchup(state.marketState);
-    return { marketState: market, planetPrices: prices };
+    const { market, prices, newCrises, endedCrises } =
+      MarketService.loadWithOfflineCatchup(state.marketState);
+    return { marketState: market, planetPrices: prices, newCrises, endedCrises };
   }, []);
 
   const describeOfflineTicks = useCallback(

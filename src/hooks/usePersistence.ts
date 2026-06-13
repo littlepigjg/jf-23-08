@@ -27,10 +27,12 @@ export const localStorageAdapter: PersistenceAdapter = {
       return null;
     }
   },
-  writeSave: (state: GameState) => {
+  writeSave: (state: GameState & { crisisEvents?: unknown[] }) => {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { crisisEvents, ...rest } = state;
       const toSave: GameState = {
-        ...state,
+        ...rest,
         travelState: null,
         battleState: null,
         eventState: null,
@@ -49,12 +51,16 @@ export const localStorageAdapter: PersistenceAdapter = {
   },
 };
 
-export const buildSavePayload = (state: GameState): GameState => ({
-  ...state,
-  travelState: null,
-  battleState: null,
-  eventState: null,
-});
+export const buildSavePayload = (state: GameState & { crisisEvents?: unknown[] }): GameState => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { crisisEvents, ...rest } = state;
+  return {
+    ...rest,
+    travelState: null,
+    battleState: null,
+    eventState: null,
+  };
+};
 
 export interface UsePersistenceResult {
   hasSave: () => boolean;

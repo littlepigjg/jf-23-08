@@ -3,6 +3,7 @@ import { useGameStore } from '../store/useGameStore';
 import { GOODS } from '../data/goods';
 import { getPlanet } from '../data/planets';
 import { describeTrend, describeSD } from '../utils/priceEngine';
+import type { MarketCrisis } from '../utils/priceEngine';
 import { cn } from '../lib/utils';
 
 export default function TradePanel() {
@@ -17,6 +18,12 @@ export default function TradePanel() {
     sellGood,
     getCargoUsed,
   } = useGameStore();
+
+  const activeCrises = marketState?.crises ?? [];
+
+  const getCrisisForGood = (goodId: string): MarketCrisis | undefined => {
+    return activeCrises.find((c) => c.goodId === goodId);
+  };
 
   const [quantities, setQuantities] = React.useState<Record<string, number>>(
     () => Object.fromEntries(GOODS.map((g) => [g.id, 1]))
@@ -108,12 +115,22 @@ export default function TradePanel() {
             const canSell = maxSell >= qty;
             const trendInfo = getTrendInfo(good.id);
             const sdInfo = getSDInfo(good.id);
+            const crisis = getCrisisForGood(good.id);
+            const hasCrisis = !!crisis;
 
             return (
               <div
                 key={good.id}
-                className="rounded-xl border border-slate-700/50 bg-slate-800/60 p-4 backdrop-blur-sm"
+                className={cn(
+                  'relative rounded-xl border p-4 backdrop-blur-sm transition-all',
+                  hasCrisis
+                    ? 'border-rose-500/50 bg-rose-950/30'
+                    : 'border-slate-700/50 bg-slate-800/60'
+                )}
               >
+                {hasCrisis && (
+                  <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-rose-500 via-rose-400 to-rose-500 animate-pulse" />
+                )}
                 <div className="mb-3 flex items-start justify-between">
                   <div className="flex items-center gap-3">
                     <div className="text-3xl">{good.icon}</div>
@@ -133,13 +150,18 @@ export default function TradePanel() {
                   </div>
                 </div>
 
-                <div className="mb-3 flex items-center gap-2 text-xs">
+                <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
                   <span className={cn('rounded px-1.5 py-0.5', trendInfo.color, 'bg-white/5')}>
                     {trendInfo.label}
                   </span>
                   <span className={cn('rounded px-1.5 py-0.5', sdInfo.color, 'bg-white/5')}>
                     {sdInfo.label}
                   </span>
+                  {hasCrisis && (
+                    <span className="rounded px-1.5 py-0.5 bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                      ⚠️ 危机 ({crisis!.remainingTicks}周期)
+                    </span>
+                  )}
                 </div>
 
                 <div className="mb-3 flex items-center gap-2">
@@ -228,6 +250,59 @@ export default function TradePanel() {
             <p className="text-sm leading-relaxed text-slate-400">
               {planet.description}
             </p>
+          </div>
+        )}
+
+        {activeCrises.length > 0 && (
+          <div className="rounded-xl border border-rose-500/40 bg-rose-950/30 p-5 backdrop-blur-sm">
+            <h3 className="mb-3 flex items-center gap-2 text-lg font-bold text-rose-300">
+              <span>📉</span>
+              <span>市场危机</span>
+              <span className="ml-auto rounded-full bg-rose-500/30 px-2 py-0.5 text-xs font-semibold text-rose-200">
+                {activeCrises.length}
+              </span>
+            </h3>
+            <div className="space-y-2">
+              {activeCrises.map((crisis) => {
+                const good = GOODS.find((g) => g.id === crisis.goodId);
+                const progress = (1 - crisis.remainingTicks / crisis.totalTicks) * 100;
+                const severity = Math.round(crisis.severity * 100);
+                return (
+                  <div
+                    key={crisis.id}
+                    className="rounded-lg border border-rose-500/30 bg-rose-900/20 p-3"
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-lg">{good?.icon ?? '📦'}</span>
+                      <span className="font-semibold text-sm text-white">
+                        {crisis.title}
+                      </span>
+                    </div>
+                    <div className="text-xs text-slate-300 mb-2">
+                      {crisis.description}
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-slate-400 mb-2">
+                      <span>严重度: <span className="text-rose-400 font-semibold">{severity}%</span></span>
+                      <span>剩余: <span className="text-amber-300">{crisis.remainingTicks}</span> 周期</span>
+                    </div>
+                    <div className="h-1.5 w-full rounded-full bg-rose-900/50 overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-rose-500 to-rose-400 transition-all duration-300"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                    {crisis.chainReactionAffected.length > 0 && (
+                      <div className="mt-2 text-xs text-amber-300">
+                        🔗 连锁影响:{' '}
+                        {crisis.chainReactionAffected
+                          .map((id) => GOODS.find((g) => g.id === id)?.name ?? id)
+                          .join('、')}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 

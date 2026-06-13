@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { GameState, CargoItem, QuestState, BattleState, QuestStatus } from '../types/game';
+import type { GameState, CargoItem, QuestState, BattleState, QuestStatus, CrisisEvent } from '../types/game';
 import { PLANETS, getDistance } from '../data/planets';
 import { QUESTS, getQuest } from '../data/quests';
 import {
@@ -16,6 +16,8 @@ import { getRandomEvent } from '../data/events';
 import { localStorageAdapter, buildSavePayload } from '../hooks/usePersistence';
 
 export interface GameStore extends GameState {
+  crisisEvents: CrisisEvent[];
+
   hasSave: () => boolean;
   newGame: () => void;
   loadGame: () => { success: boolean; offlineTicks: number };
@@ -56,6 +58,8 @@ export interface GameStore extends GameState {
     goodId?: string,
     planetId?: string
   ) => void;
+
+  dismissCrisisEvent: (eventId: string) => void;
 }
 
 const initFromMarket = () => {
@@ -63,7 +67,7 @@ const initFromMarket = () => {
   return { marketState: market, planetPrices: prices };
 };
 
-const createInitialState = (): GameState => {
+const createInitialState = (): GameState & { crisisEvents: CrisisEvent[] } => {
   const { marketState, planetPrices } = initFromMarket();
   const quests: QuestState[] = QUESTS.map((q) => ({
     id: q.id,
@@ -97,6 +101,7 @@ const createInitialState = (): GameState => {
     battleState: null,
     eventState: null,
     currentView: 'starmap',
+    crisisEvents: [],
   };
 };
 
@@ -113,14 +118,33 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const parsed = localStorageAdapter.loadSave();
     if (!parsed) return { success: false, offlineTicks: 0 };
 
-    const { market, prices, ticksApplied } = MarketService.loadWithOfflineCatchup(
-      parsed.marketState
-    );
+    const { market, prices, ticksApplied, newCrises, endedCrises } =
+      MarketService.loadWithOfflineCatchup(parsed.marketState);
+
+    const newEvents: CrisisEvent[] = [];
+    const now = Date.now();
+    for (const crisis of newCrises) {
+      newEvents.push({
+        id: `evt-${crisis.id}-start`,
+        type: 'start',
+        crisis,
+        timestamp: now,
+      });
+    }
+    for (const crisis of endedCrises) {
+      newEvents.push({
+        id: `evt-${crisis.id}-end`,
+        type: 'end',
+        crisis,
+        timestamp: now,
+      });
+    }
 
     set({
       ...parsed,
       marketState: market,
       planetPrices: prices,
+      crisisEvents: newEvents,
     });
     return { success: true, offlineTicks: ticksApplied };
   },
@@ -133,13 +157,37 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   advanceMarketOnTravel: (toPlanetId, distanceFactor) => {
     const state = get();
-    const { market, planetPrices } = MarketService.advanceOnTravel(
+    const result = MarketService.advanceOnTravel(
       state.marketState,
       state.planetPrices,
       toPlanetId,
       distanceFactor
     );
-    set({ marketState: market, planetPrices });
+
+    const newEvents: CrisisEvent[] = [];
+    const now = Date.now();
+    for (const crisis of result.newCrises) {
+      newEvents.push({
+        id: `evt-${crisis.id}-start`,
+        type: 'start',
+        crisis,
+        timestamp: now,
+      });
+    }
+    for (const crisis of result.endedCrises) {
+      newEvents.push({
+        id: `evt-${crisis.id}-end`,
+        type: 'end',
+        crisis,
+        timestamp: now,
+      });
+    }
+
+    set({
+      marketState: result.market,
+      planetPrices: result.planetPrices,
+      crisisEvents: [...state.crisisEvents, ...newEvents],
+    });
   },
 
   applyTradeImpact: (goodId, quantity, isBuy) => {
@@ -363,18 +411,38 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const toP = PLANETS.find((p) => p.id === toPlanet);
       const dist = fromP && toP ? getDistance(fromP, toP) : 0.5;
 
-      const { market, planetPrices } = MarketService.advanceOnTravel(
+      const result = MarketService.advanceOnTravel(
         state.marketState,
         state.planetPrices,
         toPlanet,
         dist
       );
 
+      const newEvents: CrisisEvent[] = [];
+      const now = Date.now();
+      for (const crisis of result.newCrises) {
+        newEvents.push({
+          id: `evt-${crisis.id}-start`,
+          type: 'start',
+          crisis,
+          timestamp: now,
+        });
+      }
+      for (const crisis of result.endedCrises) {
+        newEvents.push({
+          id: `evt-${crisis.id}-end`,
+          type: 'end',
+          crisis,
+          timestamp: now,
+        });
+      }
+
       set({
         travelState: null,
         currentPlanetId: toPlanet,
-        marketState: market,
-        planetPrices,
+        marketState: result.market,
+        planetPrices: result.planetPrices,
+        crisisEvents: [...state.crisisEvents, ...newEvents],
       });
 
       const store = get();
@@ -541,5 +609,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({ credits: newCredits, quests: newQuests, statistics: stats });
     get().saveGame();
     return true;
+  },
+
+  dismissCrisisEvent: (eventId) => {
+    const state = get();
+    set({
+      crisisEvents: state.crisisEvents.filter((e) => e.id !== eventId),
+    });
   },
 }));

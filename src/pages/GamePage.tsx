@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../store/useGameStore';
 import HUD from '../components/HUD';
 import EventModal from '../components/EventModal';
+import CrisisAlert from '../components/CrisisAlert';
 import BattleScene from '../components/BattleScene';
 import StarMap from '../components/StarMap';
 import TradePanel from '../components/TradePanel';
@@ -143,6 +144,8 @@ export default function GamePage() {
           {renderMainContent()}
         </main>
       </div>
+
+      <CrisisAlert />
 
       {eventState && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 backdrop-blur-sm">
